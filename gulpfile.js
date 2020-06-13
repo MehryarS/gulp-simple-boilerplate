@@ -1,76 +1,66 @@
-var gulp = require('gulp');
-var del = require('del');
-var gulpIf = require('gulp-if');
-var sass = require('gulp-sass');
-var cache = require('gulp-cache');
-var uglify = require('gulp-uglify');
-var imagemin = require('gulp-imagemin');
-var runSequence = require('run-sequence');
-var sourcemaps = require('gulp-sourcemaps');
-var autoprefixer = require('gulp-autoprefixer');
-var browserSync = require('browser-sync').create();
+const { watch, series, src, dest } = require('gulp');
+const gulp = require('gulp');
+const sass = require('gulp-sass');
+const minify = require('gulp-minify');
+const rename = require('gulp-rename');
+const imagemin = require('gulp-imagemin');
+const sourcemaps = require('gulp-sourcemaps');
+const autoprefixer = require('gulp-autoprefixer');
 
+const browserSync = require('browser-sync');
+const server = browserSync.create();
+  
+function serve() {
+    server.init({
+      server: {
+        baseDir: 'app'
+      }
+    });
+}
 
-gulp.task('sass', gulp.series(function () {
+function reload() {
+    server.reload();
+}
+
+function style(){
     return gulp.src('app/scss/app.scss')
-        .pipe(sourcemaps.init())
-        .pipe(autoprefixer())
-        .pipe(sass())
-        .pipe(sourcemaps.write('./maps'))
-        .pipe(gulp.dest('app/css'))
-        .pipe(browserSync.reload({
-            stream: true
-        }))
-}));
+               .pipe(sass({ includePaths: ['node_modules/foundation-sites/scss']}).on('error', sass.logError))
+               .pipe(sourcemaps.init())
+               .pipe(autoprefixer())
+               .pipe(sass().on('error', sass.logError))
+               .pipe(sourcemaps.write('./maps'))
+               .pipe(gulp.dest('app/css'))
+               .pipe(server.stream())
+}
 
-gulp.task('browserSync', function () {
-    browserSync.init({
-        server: {
-            baseDir: 'app'
-        },
-    })
-});
+function script(){
+     return gulp.src(['app/js/*.js','app/js/vendor/*.js'])
+               .pipe(minify())
+            //    .pipe(rename({ extname: '.min.js' }))
+               .pipe(gulp.dest('app/js'));
+}
 
-gulp.task('useref', gulp.series(function () {
-    return gulp.src('app/*.html')
-        .pipe(useref())
-        .pipe(gulpIf('*.js', uglify()))
-        .pipe(gulpIf('*.css', cssnano()))
-        .pipe(gulp.dest('dist'))
-}));
+function imagesmini(){
+    return gulp.src('app/images/*')
+               .pipe(imagemin([
+                    imagemin.gifsicle({interlaced: true}),
+                    imagemin.mozjpeg({quality: 75, progressive: true}),
+                    imagemin.optipng({optimizationLevel: 5}),
+                    imagemin.svgo({
+                        plugins: [
+                            {removeViewBox: true},
+                            {cleanupIDs: false}
+                        ]
+                    })
+               ]))
+               .pipe(gulp.dest('app/images/min'))
+}
 
-gulp.task('images', gulp.series(function () {
-    return gulp.src('app/images/**/*.+(png|jpg|jpeg|gif|svg)')
-        .pipe(cache(imagemin({
-            interlaced: true
-        })))
-        .pipe(gulp.dest('dist/images'))
-}));
-
-gulp.task('fonts', gulp.series(function () {
-    return gulp.src('app/fonts/**/*')
-        .pipe(gulp.dest('dist/fonts'))
-}));
-
-gulp.task('clean:dist', gulp.series(function () {
-    return del.sync('dist');
-}));
-
-gulp.task('build', gulp.series(function (callback) {
-    runSequence('clean:dist',
-        ['sass', 'useref', 'images', 'fonts'],
-        callback
-    )
-}));
-
-gulp.task('default', gulp.series(function (callback) {
-    runSequence(['sass', 'browserSync', 'watch'],
-        callback
-    )
-}));
-
-gulp.task('watch', gulp.series('browserSync', 'sass', function (){
-    gulp.watch('app/scss/**/*.scss', ['sass']);
-    gulp.watch('app/*.html', browserSync.reload);
-    gulp.watch('app/js/**/*.js', browserSync.reload);
-}));
+exports.build = series(style, imagesmini);
+exports.default = function() {
+    serve();
+    watch('app/scss/**/*.scss', style);
+    watch('app/images/*', imagesmini);
+    watch('app/*.html').on('change', reload);
+    // watch('app/js/*.js', script);
+}
