@@ -1,66 +1,72 @@
-const { watch, series, src, dest } = require('gulp');
 const gulp = require('gulp');
-const sass = require('gulp-sass');
+const { watch, series, src, dest } = gulp;
+const sass = require('gulp-sass')(require('sass'));
 const minify = require('gulp-minify');
-const rename = require('gulp-rename');
 const imagemin = require('gulp-imagemin');
 const sourcemaps = require('gulp-sourcemaps');
 const autoprefixer = require('gulp-autoprefixer');
+const browserSync = require('browser-sync').create();
 
-const browserSync = require('browser-sync');
-const server = browserSync.create();
-  
+// -------------------------
+//  Styles
+// -------------------------
+function styles() {
+  return src('app/scss/app.scss')
+    .pipe(sourcemaps.init())
+    .pipe(sass({ includePaths: ['node_modules/foundation-sites/scss'], quietDeps: true }).on('error', sass.logError))
+    .pipe(autoprefixer())
+    .pipe(sourcemaps.write('./maps'))
+    .pipe(dest('app/css'))
+    .pipe(browserSync.stream());
+}
+
+// -------------------------
+//  Scripts
+// -------------------------
+function scripts() {
+  return src(['app/js/*.js', 'app/js/vendor/*.js'])
+    .pipe(minify({ ext: { min: '.js' }, noSource: true }))
+    .pipe(dest('app/js'))
+    .pipe(browserSync.stream());
+}
+
+// -------------------------
+//  Images
+// -------------------------
+function images() {
+  return src('app/images/**/*')
+    .pipe(imagemin([
+      imagemin.gifsicle({ interlaced: true }),
+      imagemin.mozjpeg({ quality: 75, progressive: true }),
+      imagemin.optipng({ optimizationLevel: 5 }),
+      imagemin.svgo({ plugins: [{ removeViewBox: false }, { cleanupIDs: false }] })
+    ]))
+    .pipe(dest('app/images/min'))
+    .pipe(browserSync.stream());
+}
+
+// -------------------------
+//  HTML Reload
+// -------------------------
+function html(done) {
+  browserSync.reload();
+  done();
+}
+
+// -------------------------
+//  Serve + Watch
+// -------------------------
 function serve() {
-    server.init({
-      server: {
-        baseDir: 'app'
-      }
-    });
+  browserSync.init({ server: { baseDir: 'app' } });
+
+  watch('app/scss/**/*.scss', styles);
+  watch('app/js/**/*.js', scripts);
+  watch('app/images/**/*', images);
+  watch('app/**/*.html', html);
 }
 
-function reload() {
-    server.reload();
-}
-
-function style(){
-    return gulp.src('app/scss/app.scss')
-               .pipe(sass({ includePaths: ['node_modules/foundation-sites/scss']}).on('error', sass.logError))
-               .pipe(sourcemaps.init())
-               .pipe(autoprefixer())
-               .pipe(sass().on('error', sass.logError))
-               .pipe(sourcemaps.write('./maps'))
-               .pipe(gulp.dest('app/css'))
-               .pipe(server.stream())
-}
-
-function script(){
-     return gulp.src(['app/js/*.js','app/js/vendor/*.js'])
-               .pipe(minify())
-            //    .pipe(rename({ extname: '.min.js' }))
-               .pipe(gulp.dest('app/js'));
-}
-
-function imagesmini(){
-    return gulp.src('app/images/*')
-               .pipe(imagemin([
-                    imagemin.gifsicle({interlaced: true}),
-                    imagemin.mozjpeg({quality: 75, progressive: true}),
-                    imagemin.optipng({optimizationLevel: 5}),
-                    imagemin.svgo({
-                        plugins: [
-                            {removeViewBox: true},
-                            {cleanupIDs: false}
-                        ]
-                    })
-               ]))
-               .pipe(gulp.dest('app/images/min'))
-}
-
-exports.build = series(style, imagesmini);
-exports.default = function() {
-    serve();
-    watch('app/scss/**/*.scss', style);
-    watch('app/images/*', imagesmini);
-    watch('app/*.html').on('change', reload);
-    // watch('app/js/*.js', script);
-}
+// -------------------------
+//  Tasks
+// -------------------------
+exports.build = series(styles, images, scripts);
+exports.default = serve;
